@@ -10,6 +10,7 @@ async function writeFakePiCommand(binDir: string, mode: "success" | "stale-packa
     mode === "success"
       ? `#!/usr/bin/env node
 if (process.argv.includes("--list-models")) {
+  console.error("[pi-web-access] Optional plugin warning");
   console.log("provider  model");
   console.log("openai    gpt-4.1-mini");
   process.exit(0);
@@ -39,7 +40,7 @@ process.exit(1);
 }
 
 describe("pi_local environment diagnostics", () => {
-  it("passes a hello probe when model discovery and execution succeed", async () => {
+  it("passes a hello probe when Pi prints models on stdout and a warning on stderr", async () => {
     const root = path.join(
       os.tmpdir(),
       `paperclip-pi-local-probe-${Date.now()}-${Math.random().toString(16).slice(2)}`,

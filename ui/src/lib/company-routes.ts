@@ -86,6 +86,15 @@ export function applyCompanyPrefix(path: string, companyPrefix: string | null | 
   const activePrefix = extractCompanyPrefixFromPath(pathname);
   if (activePrefix) return path;
 
+  const segments = pathname.split("/").filter(Boolean);
+  if (
+    segments.length > 1 &&
+    normalizeCompanyPrefix(segments[0]!) === prefix &&
+    BOARD_ROUTE_ROOTS.has(segments[1]!.toLowerCase())
+  ) {
+    return path;
+  }
+
   return `/${prefix}${pathname}${search}${hash}`;
 }
 

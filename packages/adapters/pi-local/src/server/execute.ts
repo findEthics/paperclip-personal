@@ -331,6 +331,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   // PI_CODING_AGENT_DIR before runtimeEnv is computed, so both local validation
   // and the spawned Pi process resolve models against the managed models.json.
   const preparedRuntimeConfig = await preparePiRuntimeConfig({ env });
+  delete env.PAPERCLIP_PI_PROVIDERS;
+  delete preparedRuntimeConfig.env.PAPERCLIP_PI_PROVIDERS;
   const localAgentConfigDir = preparedRuntimeConfig.agentConfigDir ?? "";
   if (localAgentConfigDir) {
     env.PI_CODING_AGENT_DIR = localAgentConfigDir;
@@ -364,6 +366,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         (entry): entry is [string, string] => typeof entry[1] === "string",
       ),
     );
+    delete runtimeEnv.PAPERCLIP_PI_PROVIDERS;
     const timeoutSec = resolveAdapterExecutionTargetTimeoutSec(
       executionTarget,
       asNumber(config.timeoutSec, 0),
@@ -458,6 +461,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           executionTargetIsRemote,
           executionCwd: effectiveExecutionCwd,
         });
+        delete env.PAPERCLIP_PI_PROVIDERS;
         if (adapterExecutionTargetUsesManagedHome(executionTarget) && preparedRemoteRuntime.runtimeRootDir) {
           env.HOME = preparedRemoteRuntime.runtimeRootDir;
         }

@@ -231,6 +231,7 @@ describe("pi remote execution", () => {
         models: [{ id: "deepseek/deepseek-chat-v3.1", name: "DeepSeek v3.1" }],
       },
     };
+    const invocationMeta: { env?: Record<string, string> } = {};
 
     await execute({
       runId: "run-providers",
@@ -274,6 +275,9 @@ describe("pi remote execution", () => {
         },
       },
       onLog: async () => {},
+      onMeta: async (meta) => {
+        invocationMeta.env = meta.env as Record<string, string>;
+      },
     });
 
     expect(syncDirectoryToSsh).toHaveBeenCalledWith(expect.objectContaining({
@@ -285,6 +289,8 @@ describe("pi remote execution", () => {
     expect(call?.[3].env.PI_CODING_AGENT_DIR).toBe(
       `${managedRemoteWorkspace}/.paperclip-runtime/pi/agentConfig`,
     );
+    expect(invocationMeta.env?.PAPERCLIP_PI_PROVIDERS).toBeUndefined();
+    expect(JSON.stringify(invocationMeta.env)).not.toContain("sk-bf-REALVK");
     expect(call?.[2]).toContain("--provider");
     expect(call?.[2]).toContain("tensorix");
     expect(call?.[2]).toContain("--model");

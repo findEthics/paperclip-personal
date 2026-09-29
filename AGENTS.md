@@ -69,6 +69,20 @@ rm -rf data/pglite
 pnpm dev
 ```
 
+## Local Customization Tracker
+
+Track planned and completed Paperclip customizations for this checkout in `improvements.md`; keep it updated as work progresses.
+
+## Local Customization: zLLM Models
+
+This checkout uses the ignored `server/.env` to connect OpenCode agents to the local zLLM proxy at `http://127.0.0.1:2113/v1`. Keep the proxy on loopback; it authenticates with your zign identity. The configured API key is only a placeholder, not a real token.
+
+- `PAPERCLIP_ADAPTER_MODELS` controls the `opencode_local` model picker: edit its JSON array of `{ "id": "provider/model", "label": "..." }` entries to add or remove choices.
+- `PAPERCLIP_OPENCODE_PROVIDERS` defines the corresponding OpenCode providers and their `models` maps. When changing a choice, keep its provider and model entry in sync (for example, picker ID `zllm-openai/openai/gpt-6-sol` uses provider `zllm-openai` and model key `openai/gpt-6-sol`). Remove a provider only when no listed models use it.
+- If removing the model used by `PAPERCLIP_OPENCODE_SMALL_MODEL`, point it at another available model.
+
+Restart with `pnpm dev:stop` then `pnpm dev`. In new-agent setup, choose OpenCode, select **Existing OpenCode configuration**, and use **Run test** before creating an agent. The proxy must be running; `../ZLLM_PROXY_SETUP.md` documents its local setup.
+
 ## 5. Core Engineering Rules
 
 1. Keep changes company-scoped.

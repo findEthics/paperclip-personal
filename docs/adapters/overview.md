@@ -24,7 +24,7 @@ When a heartbeat fires, Paperclip:
 | [Kimi Code CLI](/adapters/kimi-local) | `kimi_local` | Runs Kimi Code CLI locally through ACP, with explicitly selectable headless `-p` mode |
 | OpenCode | `opencode_local` | Runs OpenCode CLI locally (multi-provider `provider/model`) |
 | Cursor | `cursor` | Runs Cursor in background mode |
-| Pi | `pi_local` | Runs an embedded Pi agent locally |
+| [Pi](/adapters/pi-local) | `pi_local` | Runs the Pi CLI with provider/model routing and target-local auth |
 | Hermes | `hermes_local` | Runs the local Hermes CLI through `@paperclipai/hermes-paperclip-adapter` |
 | Hermes Gateway | `hermes_gateway` | Calls an already-running Hermes API server through `@paperclipai/hermes-paperclip-adapter/gateway` |
 | OpenClaw Gateway | `openclaw_gateway` | Connects to an OpenClaw gateway endpoint |
@@ -41,6 +41,7 @@ before the CLI starts:
 |---------|---------------------|-------------------------------------------------------|
 | [`codex_local`](/adapters/codex-local) | Host-owns-auth for Paperclip-managed `CODEX_HOME` | A host-owned `auth.json` is symlinked into the managed `CODEX_HOME` and uploaded to the sandbox. If a per-agent `OPENAI_API_KEY` is configured, Paperclip writes an API-key `auth.json` instead and that file wins. A login baked into the sandbox image is shadowed because Codex runs with Paperclip's uploaded `CODEX_HOME`. |
 | [`claude_local`](/adapters/claude-local) | Snapshot-owns-auth for managed remote Claude config | A configured `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (agent or environment env) wins over any stored login. Otherwise Paperclip uploads only sanitized settings and skill/runtime assets, and when the remote managed config has no Claude credential files it copies `.credentials.json` or `credentials.json` from the sandbox image's own `$HOME/.claude`, so the image's login wins. |
+| [`pi_local`](/adapters/pi-local) | Uses Pi auth available on the selected target | Pi uses that target's normal profile unless `PAPERCLIP_PI_PROVIDERS` supplies a temporary `models.json`, which replaces the normal Pi agent-config directory for the run. |
 
 Worked examples:
 

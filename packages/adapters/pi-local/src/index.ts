@@ -35,6 +35,8 @@ Operational fields:
 
 Notes:
 - Pi supports multiple providers and models. Use \`pi --list-models\` to list available options.
+- New-agent setup can use the Pi configuration already available on the selected execution environment without attaching an API key.
+- PAPERCLIP_PI_PROVIDERS materializes a custom models.json and replaces Pi's normal agent-config directory for that run; remote endpoints must be reachable from the execution environment.
 - Paperclip requires an explicit \`model\` value for \`pi_local\` agents.
 - Sessions are stored in ~/.pi/paperclips/ and resumed with --session.
 - All tools (read, bash, edit, write, grep, find, ls) are enabled by default.

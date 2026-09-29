@@ -52,6 +52,12 @@ describe("company routes", () => {
     expect(applyCompanyPrefix("/NEU/company/export", "NEU")).toBe("/NEU/company/export");
   });
 
+  it("does not mistake a matching company prefix for the /org board route", () => {
+    expect(applyCompanyPrefix("/issues/ORG-3", "ORG")).toBe("/ORG/issues/ORG-3");
+    expect(applyCompanyPrefix("/ORG/issues/ORG-3", "ORG")).toBe("/ORG/issues/ORG-3");
+    expect(applyCompanyPrefix("/org", "ORG")).toBe("/ORG/org");
+  });
+
   it("normalizes prefixed company export file URLs for parsing", () => {
     expect(toCompanyRelativePath("/NEU/company/export/files/agents/ceo/AGENTS.md")).toBe(
       "/company/export/files/agents/ceo/AGENTS.md",

@@ -136,6 +136,8 @@ function Setup({
     createdAgentId ? "saved" : connectionAdapter ? "connect" : "runtime",
   );
   const [model, setModel] = useState("");
+  const [useExistingOpenCodeConfig, setUseExistingOpenCodeConfig] = useState(false);
+  const [useExistingPiConfig, setUseExistingPiConfig] = useState(false);
   const efforts = isRunner ? [] : setupEfforts(adapterType, model);
   const [effort, setEffort] = useState("");
   const [modelOpen, setModelOpen] = useState(false);
@@ -275,7 +277,9 @@ function Setup({
     (entry) => entry.key === envKey && entry.status === "active",
   );
   const selectedBinding =
-    adapterType === "cursor_cloud"
+    adapterType === "cursor_cloud" ||
+    (brandType === "opencode_local" && useExistingOpenCodeConfig) ||
+    (brandType === "pi_local" && useExistingPiConfig)
       ? null
       : (providerBinding ??
         (savedOrganizationKey
@@ -411,7 +415,11 @@ function Setup({
     return buildConfig(nextConnection);
   }
   function pendingCredentials(nextConnection = connection) {
-    if (aiBinding || nextConnection?.aiConnection) return {};
+    if (
+      aiBinding || nextConnection?.aiConnection ||
+      (brandType === "opencode_local" && useExistingOpenCodeConfig) ||
+      (brandType === "pi_local" && useExistingPiConfig)
+    ) return {};
     return {
       ...nextConnection?.credentials,
       ...(hasCredentialField && apiKey.trim()
@@ -442,6 +450,8 @@ function Setup({
       setTestState(blocking(tested) ? "fail" : tested.status);
       return (
         !blocking(tested) &&
+        (!(brandType === "pi_local" && useExistingPiConfig) ||
+          tested.checks.some((check) => check.code === "pi_hello_probe_passed")) &&
         (!connectionAdapter ||
           tested.checks.some((check) =>
             check.code.endsWith("hello_probe_passed"),
@@ -479,6 +489,12 @@ function Setup({
       const credentials = pendingCredentials();
       // Untested entered keys must pass a probe before they can be stored.
       if (Object.keys(credentials).length && !(await runTest())) return;
+      if (
+        brandType === "pi_local" &&
+        useExistingPiConfig &&
+        !result?.checks.some((check) => check.code === "pi_hello_probe_passed") &&
+        !(await runTest())
+      ) return;
       for (const [key, value] of Object.entries(credentials)) {
         const store = connectionAdapter
           ? storeProviderApiKey
@@ -811,7 +827,64 @@ function Setup({
                     <fieldset disabled={busy} className="space-y-8">
                       <section className="space-y-5">
                         <h3 className="text-sm font-semibold">Runtime</h3>
-                        {aiProviderForAdapter(brandType) && (
+                        {brandType === "opencode_local" && (
+                          <Field label="OpenCode model source">
+                            <select
+                              aria-label="OpenCode model source"
+                              className={controlClass}
+                              value={useExistingOpenCodeConfig ? "existing" : "openrouter"}
+                              onChange={(event) => {
+                                const existing = event.target.value === "existing";
+                                setUseExistingOpenCodeConfig(existing);
+                                setRuntimeAiBinding(existing ? undefined : {
+                                  provider: "openrouter", method: "api_key", mode: "responsible_user",
+                                });
+                                setModel("");
+                                setEffort("");
+                                setApiKey("");
+                                setProviderBinding(null);
+                                resetTest();
+                              }}
+                            >
+                              <option value="openrouter">OpenRouter connection</option>
+                              <option value="existing">Existing OpenCode configuration</option>
+                            </select>
+                          </Field>
+                        )}
+                        {brandType === "pi_local" && (
+                          <Field label="Pi model source">
+                            <select
+                              aria-label="Pi model source"
+                              className={controlClass}
+                              value={useExistingPiConfig ? "existing" : "api_key"}
+                              onChange={(event) => {
+                                const existing = event.target.value === "existing";
+                                setUseExistingPiConfig(existing);
+                                setModel("");
+                                setEffort("");
+                                setApiKey("");
+                                setProvider("openrouter");
+                                setProviderBinding(null);
+                                resetTest();
+                              }}
+                            >
+                              <option value="api_key">API key or secret</option>
+                              <option value="existing">Existing Pi configuration</option>
+                            </select>
+                          </Field>
+                        )}
+                        {brandType === "opencode_local" && useExistingOpenCodeConfig && (
+                          <p className="text-sm text-muted-foreground">
+                            Uses providers already configured on the selected environment.
+                            No OpenRouter connection or API key is attached.
+                          </p>
+                        )}
+                        {brandType === "pi_local" && useExistingPiConfig && (
+                          <p className="text-sm text-muted-foreground">
+                            Uses providers and login already configured for Pi on the selected environment. Paperclip does not attach an API key.
+                          </p>
+                        )}
+                        {aiProviderForAdapter(brandType) && !(brandType === "opencode_local" && useExistingOpenCodeConfig) && (
                           connection && !aiBinding ? (
                             <div className="space-y-3">
                               <p className="text-sm text-muted-foreground">
@@ -896,7 +969,7 @@ function Setup({
                             manually.
                           </p>
                         )}
-                        {hasCredentialField && !aiBinding && (
+                        {hasCredentialField && !aiBinding && !(brandType === "opencode_local" && useExistingOpenCodeConfig) && !(brandType === "pi_local" && useExistingPiConfig) && (
                           <div className="grid gap-5 sm:grid-cols-2">
                             {chooseProvider && (
                               <Field label="API key provider">

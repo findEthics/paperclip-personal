@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type {
   AdapterEnvironmentCheck,
   AdapterEnvironmentTestContext,
@@ -12,6 +15,8 @@ import {
   asStringArray,
 } from "@paperclipai/adapter-utils/server-utils";
 import {
+  prepareAdapterExecutionTargetRuntime,
+  overrideAdapterExecutionTargetRemoteCwd,
   ensureAdapterExecutionTargetCommandResolvable,
   maybeRunSandboxInstallCommand,
   ensureAdapterExecutionTargetDirectory,
@@ -19,6 +24,7 @@ import {
   describeAdapterExecutionTarget,
   resolveAdapterExecutionTargetCwd,
 } from "@paperclipai/adapter-utils/execution-target";
+import { preparePiRuntimeConfig } from "./runtime-config.js";
 import { discoverPiModelsCached } from "./models.js";
 import { parsePiJsonl } from "./parse.js";
 import { SANDBOX_INSTALL_COMMAND } from "../index.js";
@@ -125,7 +131,53 @@ export async function testEnvironment(
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
   }
-  const runtimeEnv = normalizeEnv(ensurePathInEnv({ ...process.env, ...env }));
+  const preparedRuntimeConfig = await preparePiRuntimeConfig({ env });
+  delete env.PAPERCLIP_PI_PROVIDERS;
+  delete preparedRuntimeConfig.env.PAPERCLIP_PI_PROVIDERS;
+  let restoreWorkspace: (() => Promise<void>) | null = null;
+  let preparedRuntimeWorkspaceLocalDir: string | null = null;
+  let probeTarget = target;
+  let probeCwd = cwd;
+
+  try {
+    if (targetIsRemote && preparedRuntimeConfig.agentConfigDir) {
+      preparedRuntimeWorkspaceLocalDir = await fs.mkdtemp(
+        path.join(os.tmpdir(), `paperclip-pi-envtest-${runId}-`),
+      );
+      const preparedExecutionTargetRuntime = await prepareAdapterExecutionTargetRuntime({
+        runId,
+        target,
+        adapterKey: "pi",
+        workspaceLocalDir: preparedRuntimeWorkspaceLocalDir,
+        workspaceRemoteDir: cwd,
+        installCommand: SANDBOX_INSTALL_COMMAND,
+        detectCommand: command,
+        assets: [{
+          key: "agentConfig",
+          localDir: preparedRuntimeConfig.agentConfigDir,
+        }],
+      });
+      restoreWorkspace = async () => {
+        await preparedExecutionTargetRuntime.restoreWorkspace().catch(() => {});
+        if (preparedRuntimeWorkspaceLocalDir) {
+          await fs.rm(preparedRuntimeWorkspaceLocalDir, { recursive: true, force: true }).catch(() => {});
+        }
+      };
+      probeCwd = preparedExecutionTargetRuntime.workspaceRemoteDir ?? probeCwd;
+      probeTarget = overrideAdapterExecutionTargetRemoteCwd(target, probeCwd) ?? target;
+      if (preparedExecutionTargetRuntime.assetDirs.agentConfig) {
+        preparedRuntimeConfig.env.PI_CODING_AGENT_DIR =
+          preparedExecutionTargetRuntime.assetDirs.agentConfig;
+      }
+    }
+
+  const runtimeEnv = normalizeEnv(ensurePathInEnv({
+    ...process.env,
+    ...preparedRuntimeConfig.env,
+  }));
+  // The provider JSON is materialized into models.json and must not be exposed
+  // to the Pi process as an environment variable.
+  delete runtimeEnv.PAPERCLIP_PI_PROVIDERS;
 
   const cwdInvalid = checks.some((check) => check.code === "pi_cwd_invalid");
   if (cwdInvalid) {
@@ -146,7 +198,7 @@ export async function testEnvironment(
     });
     if (installCheck) checks.push(installCheck);
     try {
-      await ensureAdapterExecutionTargetCommandResolvable(command, target, cwd, runtimeEnv);
+      await ensureAdapterExecutionTargetCommandResolvable(command, probeTarget, probeCwd, runtimeEnv);
       checks.push({
         code: "pi_command_resolvable",
         level: "info",
@@ -170,7 +222,7 @@ export async function testEnvironment(
   // model/auth issues directly.
   if (!targetIsRemote && canRunProbe) {
     try {
-      const discovered = await discoverPiModelsCached({ command, cwd, env: runtimeEnv });
+      const discovered = await discoverPiModelsCached({ command, cwd: probeCwd, env: runtimeEnv });
       if (discovered.length > 0) {
         checks.push({
           code: "pi_models_discovered",
@@ -211,7 +263,7 @@ export async function testEnvironment(
   } else if (canRunProbe) {
     // Verify model is in the list
     try {
-      const discovered = await discoverPiModelsCached({ command, cwd, env: runtimeEnv });
+      const discovered = await discoverPiModelsCached({ command, cwd: probeCwd, env: runtimeEnv });
       const modelExists = discovered.some((m: { id: string }) => m.id === configuredModel);
       if (modelExists) {
         checks.push({
@@ -262,11 +314,11 @@ export async function testEnvironment(
     try {
       const probe = await runAdapterExecutionTargetProcess(
         runId,
-        target,
+        probeTarget,
         command,
         args,
         {
-          cwd,
+          cwd: probeCwd,
           env: runtimeEnv,
           timeoutSec: 60,
           graceSec: 5,
@@ -335,4 +387,11 @@ export async function testEnvironment(
     checks,
     testedAt: new Date().toISOString(),
   };
+  } finally {
+    await restoreWorkspace?.();
+    if (!restoreWorkspace && preparedRuntimeWorkspaceLocalDir) {
+      await fs.rm(preparedRuntimeWorkspaceLocalDir, { recursive: true, force: true }).catch(() => {});
+    }
+    await preparedRuntimeConfig.cleanup();
+  }
 }

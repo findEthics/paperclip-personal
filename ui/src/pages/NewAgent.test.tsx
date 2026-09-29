@@ -493,6 +493,77 @@ describe("New agent setup", () => {
       expect(secrets.create).toHaveBeenCalledTimes(1);
     },
   );
+  it("uses an existing Pi configuration without attaching provider credentials", async () => {
+    secrets.list.mockResolvedValue([{
+      id: "openrouter-secret",
+      key: "OPENROUTER_API_KEY",
+      name: "OpenRouter key",
+      status: "active",
+    }]);
+    await render("pi_local");
+    const source = container.querySelector('[aria-label="Pi model source"]') as HTMLSelectElement;
+    await act(async () => {
+      source.value = "existing";
+      source.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+
+    expect(container.querySelector('[aria-label="API key provider"]')).toBeNull();
+    expect(container.querySelector('[aria-label="OPENROUTER_API_KEY"]')).toBeNull();
+    expect(container.textContent).toContain("selected environment");
+    await fill("Model", "zllm-openai/openai/gpt-6-sol");
+    api.testEnvironment.mockResolvedValueOnce({
+      ...pass,
+      checks: [{ code: "pi_hello_probe_passed", level: "info", message: "Pi replied" }],
+    });
+    await click("Run test");
+    expect(api.testEnvironment.mock.calls[0][2]).toEqual(expect.objectContaining({
+      adapterConfig: expect.objectContaining({ model: "zllm-openai/openai/gpt-6-sol" }),
+      testCredentials: {},
+    }));
+    expect(api.testEnvironment.mock.calls[0][2]).not.toHaveProperty("aiConnection");
+
+    await click("Finish setup");
+    const input = api.hire.mock.calls[0][1];
+    expect(input.adapterConfig.model).toBe("zllm-openai/openai/gpt-6-sol");
+    expect(input.adapterConfig.env?.OPENROUTER_API_KEY).toBeUndefined();
+    expect(input.runtimeConfig.aiConnection).toBeUndefined();
+    expect(secrets.create).not.toHaveBeenCalled();
+  });
+  it("requires a successful Pi auth probe before finishing with existing configuration", async () => {
+    await render("pi_local");
+    const source = container.querySelector('[aria-label="Pi model source"]') as HTMLSelectElement;
+    await act(async () => {
+      source.value = "existing";
+      source.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    await fill("Model", "anthropic/claude-sonnet-4-6");
+    api.testEnvironment.mockResolvedValue({
+      ...pass,
+      status: "warn",
+      checks: [{ code: "pi_hello_probe_auth_required", level: "warn", message: "Login required" }],
+    });
+
+    await click("Run test");
+    await click("Finish setup");
+    expect(api.testEnvironment).toHaveBeenCalledTimes(2);
+    expect(api.hire).not.toHaveBeenCalled();
+  });
+  it("clears Pi model and entered key when switching to existing configuration", async () => {
+    await render("pi_local");
+    await fill("Model", "openrouter/anthropic/claude-sonnet-4.6");
+    await fill("OPENROUTER_API_KEY", "temporary-key");
+    const source = container.querySelector('[aria-label="Pi model source"]') as HTMLSelectElement;
+    await act(async () => {
+      source.value = "existing";
+      source.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+
+    expect((container.querySelector('[aria-label="Model"]') as HTMLInputElement).value).toBe("");
+    expect(container.querySelector('[aria-label="OPENROUTER_API_KEY"]')).toBeNull();
+  });
   it("connects OpenRouter before testing and hiring OpenCode without copying credentials into the agent", async () => {
     await render("opencode_local");
     const model = "openrouter/anthropic/claude-sonnet-4.6";
@@ -532,6 +603,53 @@ describe("New agent setup", () => {
     expect(secrets.create).not.toHaveBeenCalled();
     expect(JSON.stringify(api.testEnvironment.mock.calls)).not.toContain("example-test-secret");
     expect(JSON.stringify(api.hire.mock.calls)).not.toContain("example-test-secret");
+  });
+  it("uses configured OpenCode providers without an OpenRouter binding or saved key", async () => {
+    secrets.list.mockResolvedValue([{ id: "openrouter-secret", key: "OPENROUTER_API_KEY", status: "active" }]);
+    await render("opencode_local");
+    expect(api.adapterModels).toHaveBeenCalledWith("company-1", "opencode_local", { provider: "openrouter" });
+    const source = container.querySelector('[aria-label="OpenCode model source"]') as HTMLSelectElement;
+    await act(async () => {
+      source.value = "existing";
+      source.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect(api.adapterModels).toHaveBeenLastCalledWith("company-1", "opencode_local", { provider: undefined });
+    expect(container.textContent).not.toContain("Connect another account");
+    expect(container.querySelector('[aria-label="API key provider"]')).toBeNull();
+    await fill("Model", "zllm-openai/openai/gpt-6-sol");
+    await click("Run test");
+    expect(api.testEnvironment.mock.calls[0][2]).toEqual(expect.objectContaining({
+      adapterConfig: expect.objectContaining({ model: "zllm-openai/openai/gpt-6-sol" }),
+      testCredentials: {},
+    }));
+    expect(api.testEnvironment.mock.calls[0][2]).not.toHaveProperty("aiConnection");
+    await click("Finish setup");
+    const input = api.hire.mock.calls[0][1];
+    expect(input.adapterConfig.model).toBe("zllm-openai/openai/gpt-6-sol");
+    expect(input.adapterConfig.env?.OPENROUTER_API_KEY).toBeUndefined();
+    expect(input.runtimeConfig.aiConnection).toBeUndefined();
+    expect(secrets.create).not.toHaveBeenCalled();
+  });
+  it("clears the OpenCode model when switching connection sources", async () => {
+    await render("opencode_local");
+    await fill("Model", "openrouter/anthropic/claude-sonnet-4.6");
+    const source = container.querySelector('[aria-label="OpenCode model source"]') as HTMLSelectElement;
+    await act(async () => {
+      source.value = "existing";
+      source.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect((container.querySelector('[aria-label="Model"]') as HTMLInputElement).value).toBe("");
+    await fill("Model", "zllm-openai/openai/gpt-6-sol");
+    await act(async () => {
+      source.value = "openrouter";
+      source.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect((container.querySelector('[aria-label="Model"]') as HTMLInputElement).value).toBe("");
+    expect(api.adapterModels).toHaveBeenLastCalledWith("company-1", "opencode_local", { provider: "openrouter" });
+    expect(container.textContent).toContain("Connect another account");
   });
   it.each(["codex", "claude", "opencode"])(
     "uses the correct native %s runner",
